@@ -42,6 +42,7 @@ class SchemaToJsonLdConverter:
         # Namespace definitions
         self.CIM = Namespace(base_uri)
         self.XSD = Namespace("http://www.w3.org/2001/XMLSchema#")
+        self.CIMS = Namespace("http://iec.ch/TC57/1999/rdf-schema-extensions-19990926#")
 
         # Tracking
         self.classes: Dict[str, Dict] = {}
@@ -92,9 +93,15 @@ class SchemaToJsonLdConverter:
         """Extract all properties and associate them with their domain classes."""
         print("Extracting properties...")
 
-        # Find all properties (rdfs:Property)
+        # Find all properties (both rdf:Property and rdfs:Property)
+        rdf_property = URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")
         rdfs_property = URIRef("http://www.w3.org/2000/01/rdf-schema#Property")
-        for prop_uri in self.graph.subjects(RDF.type, rdfs_property):
+
+        # Collect all property URIs from both types
+        property_uris = set(self.graph.subjects(RDF.type, rdf_property))
+        property_uris.update(self.graph.subjects(RDF.type, rdfs_property))
+
+        for prop_uri in property_uris:
             prop_name = self._extract_local_name(str(prop_uri))
 
             # Get property metadata
@@ -298,9 +305,15 @@ class SchemaToJsonLdConverter:
         return str(domain) if domain else None
 
     def _get_range(self, subject: URIRef) -> str:
-        """Get rdfs:range for a property."""
+        """Get rdfs:range or cims:dataType for a property."""
+        # First try rdfs:range (standard)
         range_val = self.graph.value(subject, RDFS.range)
-        return str(range_val) if range_val else None
+        if range_val:
+            return str(range_val)
+
+        # Fall back to cims:dataType (CGMES-specific)
+        datatype_val = self.graph.value(subject, self.CIMS.dataType)
+        return str(datatype_val) if datatype_val else None
 
     def convert(self):
         """Run the complete conversion process."""
