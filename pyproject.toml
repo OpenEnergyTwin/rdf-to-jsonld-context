@@ -1,0 +1,20 @@
+[project]
+name = "rdf-to-jsonld-context"
+version = "0.1.0"
+description = "Convert RDF schemas to JSON-LD context files for static hosting"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "rdflib>=7.0.0",
+]
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+keywords = ["rdf", "json-ld", "cgmes", "cim", "schema", "context"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Code Generators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+]

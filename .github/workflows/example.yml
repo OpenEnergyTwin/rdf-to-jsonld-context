@@ -1,0 +1,59 @@
+# Example workflow showing how to use this action
+# Copy this file and customize for your needs
+
+name: Convert CGMES Schemas (Example)
+
+on:
+  # Run on pushes to main that affect schema files
+  push:
+    branches: [main]
+    paths:
+      - 'cgmes-data/**'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      context-base-url:
+        description: 'Base URL for context files (optional)'
+        required: false
+        type: string
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Convert RDF schemas to JSON-LD contexts
+        id: convert
+        uses: ./  # Uses the action from this repository
+        with:
+          schema-dir: 'cgmes-data'
+          output-dir: 'output'
+          # Use input from workflow_dispatch if provided, otherwise use default
+          context-base-url: ${{ github.event.inputs.context-base-url || 'https://cim.ucaiug.io/ns' }}
+
+      - name: Display conversion results
+        run: |
+          echo "✅ Conversion complete!"
+          echo "📊 Statistics:"
+          echo "   - Classes: ${{ steps.convert.outputs.class-count }}"
+          echo "   - Properties: ${{ steps.convert.outputs.property-count }}"
+          echo "   - Context file: ${{ steps.convert.outputs.context-file }}"
+
+      - name: Upload generated contexts as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsonld-contexts
+          path: output/
+          retention-days: 90
+
+      - name: List generated files
+        run: |
+          echo "Generated files:"
+          ls -lh output/
+          echo ""
+          echo "Class contexts:"
+          ls -lh output/CIM/ | head -20

@@ -1,0 +1,100 @@
+name: 'CGMES RDF to JSON-LD Context Converter'
+description: 'Convert CGMES RDF schemas to JSON-LD context files for static hosting'
+author: 'Your Name'
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  schema-dir:
+    description: 'Directory containing RDF schema files (.rdf, .ttl)'
+    required: true
+    default: 'cgmes-data'
+
+  output-dir:
+    description: 'Output directory for JSON-LD context files'
+    required: true
+    default: 'output'
+
+  base-uri:
+    description: 'Base URI for CIM classes'
+    required: false
+    default: 'http://iec.ch/TC57/2013/CIM-schema-cim16#'
+
+  context-base-url:
+    description: 'Base URL where context files will be hosted (e.g., https://example.com/contexts). If not provided, uses relative URLs.'
+    required: false
+    default: ''
+
+outputs:
+  context-file:
+    description: 'Path to the generated main context.jsonld file'
+    value: ${{ steps.convert.outputs.context-file }}
+
+  class-count:
+    description: 'Number of classes generated'
+    value: ${{ steps.convert.outputs.class-count }}
+
+  property-count:
+    description: 'Number of properties extracted'
+    value: ${{ steps.convert.outputs.property-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Install uv
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}
+        uv sync
+
+    - name: Convert RDF schemas to JSON-LD contexts
+      id: convert
+      shell: bash
+      run: |
+        # Build command with absolute paths
+        SCHEMA_PATH="${GITHUB_WORKSPACE}/${{ inputs.schema-dir }}"
+        OUTPUT_PATH="${GITHUB_WORKSPACE}/${{ inputs.output-dir }}"
+
+        cd ${{ github.action_path }}
+        CMD="uv run python main.py \"${SCHEMA_PATH}\" \"${OUTPUT_PATH}\""
+
+        # Add optional base-uri if different from default
+        if [ "${{ inputs.base-uri }}" != "http://iec.ch/TC57/2013/CIM-schema-cim16#" ]; then
+          CMD="$CMD --base-uri '${{ inputs.base-uri }}'"
+        fi
+
+        # Add optional context-base-url if provided
+        if [ -n "${{ inputs.context-base-url }}" ]; then
+          CMD="$CMD --context-base-url '${{ inputs.context-base-url }}'"
+        fi
+
+        # Run the conversion and capture output
+        OUTPUT=$(eval $CMD 2>&1)
+        echo "$OUTPUT"
+
+        # Extract statistics from output
+        CLASS_COUNT=$(echo "$OUTPUT" | grep "Found.*classes" | grep -o '[0-9]\+' | head -1)
+        PROPERTY_COUNT=$(echo "$OUTPUT" | grep "Found.*properties" | grep -o '[0-9]\+' | head -1)
+
+        # Set outputs (relative to workspace)
+        echo "context-file=${OUTPUT_PATH}/context.jsonld" >> $GITHUB_OUTPUT
+        echo "class-count=${CLASS_COUNT:-0}" >> $GITHUB_OUTPUT
+        echo "property-count=${PROPERTY_COUNT:-0}" >> $GITHUB_OUTPUT
+
+        echo "✅ Conversion complete!"
+        echo "   Classes: ${CLASS_COUNT:-0}"
+        echo "   Properties: ${PROPERTY_COUNT:-0}"
+        echo "   Output: ${{ inputs.output-dir }}/context.jsonld"
