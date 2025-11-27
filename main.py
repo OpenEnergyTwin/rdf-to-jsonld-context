@@ -47,6 +47,20 @@ class SchemaToJsonLdConverter:
         # Tracking
         self.classes: Dict[str, Dict] = {}
         self.properties: Dict[str, Dict] = {}
+        self.primitive_types: Set[str] = set()
+        self.cim_datatypes: Set[str] = set()
+
+        # Mapping of CIM primitive types to XSD types
+        self.cim_to_xsd = {
+            "Boolean": "xsd:boolean",
+            "String": "xsd:string",
+            "Integer": "xsd:integer",
+            "Float": "xsd:float",
+            "Decimal": "xsd:decimal",
+            "Date": "xsd:date",
+            "DateTime": "xsd:dateTime",
+            "MonthDay": "xsd:gMonthDay"
+        }
 
     def load_schemas(self):
         """Load all RDF schema files from the schema directory."""
@@ -78,16 +92,26 @@ class SchemaToJsonLdConverter:
             label = self._get_label(class_uri)
             comment = self._get_comment(class_uri)
             subclass_of = self._get_subclass_of(class_uri)
+            stereotype = self._get_stereotype(class_uri)
+
+            # Track primitive types and CIM datatypes
+            if stereotype == "Primitive":
+                self.primitive_types.add(class_name)
+            elif stereotype == "CIMDatatype":
+                self.cim_datatypes.add(class_name)
 
             self.classes[class_name] = {
                 "@id": str(class_uri),
                 "label": label or class_name,
                 "comment": comment,
                 "subClassOf": subclass_of,
+                "stereotype": stereotype,
                 "properties": {}
             }
 
         print(f"Found {len(self.classes)} classes")
+        print(f"  - {len(self.primitive_types)} primitive types: {', '.join(sorted(list(self.primitive_types)[:5]))}...")
+        print(f"  - {len(self.cim_datatypes)} CIM datatypes: {', '.join(sorted(list(self.cim_datatypes)[:5]))}...")
 
     def extract_properties(self):
         """Extract all properties and associate them with their domain classes."""
@@ -257,12 +281,20 @@ class SchemaToJsonLdConverter:
             # Add type information based on range
             if prop_data.get("range"):
                 range_uri = prop_data["range"]
+                range_type = self._extract_local_name(range_uri)
+
                 if "XMLSchema" in range_uri:
-                    # Datatype property
+                    # Standard XSD datatype property
                     xsd_type = self._extract_local_name(range_uri)
                     prop_context["@type"] = f"xsd:{xsd_type}"
+                elif range_type in self.cim_to_xsd:
+                    # CIM primitive type - map to XSD equivalent
+                    prop_context["@type"] = self.cim_to_xsd[range_type]
+                elif range_type in self.cim_datatypes:
+                    # CIM compound datatype (like ApparentPower with value+unit) - object reference
+                    prop_context["@type"] = "@id"
                 else:
-                    # Object property
+                    # Regular class reference - object property
                     prop_context["@type"] = "@id"
 
             # Add label and comment as annotations
@@ -314,6 +346,17 @@ class SchemaToJsonLdConverter:
         # Fall back to cims:dataType (CGMES-specific)
         datatype_val = self.graph.value(subject, self.CIMS.dataType)
         return str(datatype_val) if datatype_val else None
+
+    def _get_stereotype(self, subject: URIRef) -> str:
+        """Get cims:stereotype for a class."""
+        stereotype = self.graph.value(subject, self.CIMS.stereotype)
+        if stereotype:
+            # Extract local name if it's a URI
+            stereotype_str = str(stereotype)
+            if "#" in stereotype_str or "/" in stereotype_str:
+                return self._extract_local_name(stereotype_str)
+            return stereotype_str
+        return None
 
     def convert(self):
         """Run the complete conversion process."""
